@@ -20,6 +20,10 @@ def save_dict(model, path="dictionary.p"):
     with open(path, 'wb') as f:
         pickle.dump(model, f)
 
+def load_dict(path="dictionary.p"):
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
 def learn_dictionary(X):
     dictionary = DictionaryLearning(n_components=2000, fit_algorithm='lars',
                                     transform_n_nonzero_coefs=5, verbose=2)
@@ -30,8 +34,14 @@ def learn_dictionary(X):
 
 
 if __name__ == "__main__":
-    dataframe = load_word_embeddings()
-    X = dataframe.as_matrix()
-    #dictionary = learn_dictionary(X[:1000]) # 13 mins 40 secs, m=2000, k=5
-    dictionary = learn_dictionary(X[:10000])
-    save_dict(dictionary, "dictionary_10k.p")
+    # dataframe = load_word_embeddings()
+    # X = dataframe.as_matrix()
+    # #dictionary = learn_dictionary(X[:1000]) # 13 mins 40 secs, m=2000, k=5
+    # save_dict(dictionary, "dictionary_1k.p")
+    # dictionary = learn_dictionary(X[:10000])
+    # save_dict(dictionary, "dictionary_10k.p")
+
+    dictionary = load_dict("dictionary_1k.p")
+    print(type(dictionary))
+    basis_vectors = dictionary.components_ # Each row is a learned basis vector
+    print(basis_vectors.shape)
