@@ -32,5 +32,6 @@ def learn_dictionary(X):
 if __name__ == "__main__":
     dataframe = load_word_embeddings()
     X = dataframe.as_matrix()
-    dictionary = learn_dictionary(X[:1000])
-    save_dict(dictionary)
+    #dictionary = learn_dictionary(X[:1000]) # 13 mins 40 secs, m=2000, k=5
+    dictionary = learn_dictionary(X[:10000])
+    save_dict(dictionary, "dictionary_10k.p")
