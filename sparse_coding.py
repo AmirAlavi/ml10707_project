@@ -1,6 +1,7 @@
 # Sparse coding baseline model
 import csv
 import datetime
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -15,9 +16,13 @@ def load_word_embeddings(path='glove.6B.50d.txt'):
     return pd.read_csv(path, sep=" ", header=None, index_col=0,
                        quoting=csv.QUOTE_NONE)
 
+def save_dict(model, path="dictionary.p"):
+    with open(path, 'wb') as f:
+        pickle.dump(model, f)
+
 def learn_dictionary(X):
-    dictionary = DictionaryLearning(n_components=100, fit_algorithm='lars',
-                                    transform_n_nonzero_coefs=5, verbose=True)
+    dictionary = DictionaryLearning(n_components=2000, fit_algorithm='lars',
+                                    transform_n_nonzero_coefs=5, verbose=2)
     t0 = datetime.datetime.now()
     dictionary.fit(X)
     t1 = datetime.datetime.now()
@@ -28,3 +33,4 @@ if __name__ == "__main__":
     dataframe = load_word_embeddings()
     X = dataframe.as_matrix()
     dictionary = learn_dictionary(X[:1000])
+    save_dict(dictionary)
