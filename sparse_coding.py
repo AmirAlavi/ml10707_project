@@ -31,13 +31,14 @@ def learn_dictionary(X):
     dictionary.fit(X)
     t1 = datetime.datetime.now()
     print("Dictionary learning took " + pretty_tdelta(t1-t0))
+    return dictionary
 
 
 if __name__ == "__main__":
-    # dataframe = load_word_embeddings()
-    # X = dataframe.as_matrix()
-    # #dictionary = learn_dictionary(X[:1000]) # 13 mins 40 secs, m=2000, k=5
-    # save_dict(dictionary, "dictionary_1k.p")
+    dataframe = load_word_embeddings()
+    X = dataframe.as_matrix()
+    dictionary = learn_dictionary(X[:1000]) # 13 mins 40 secs, m=2000, k=5
+    save_dict(dictionary, "dictionary_1k.p")
     # dictionary = learn_dictionary(X[:10000])
     # save_dict(dictionary, "dictionary_10k.p")
 
