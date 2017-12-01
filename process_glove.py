@@ -1,8 +1,8 @@
 import sys
-import pickle
 
 import pandas as pd
 import numpy as np
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
