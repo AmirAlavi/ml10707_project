@@ -13,7 +13,7 @@ def get_embed_weights(filename='glove.6B.50d.txt.embed_mat.npy'):
     mask_embed = np.zeros(shape=(1, embed_mat.shape[1]), dtype=np.float32)
     return np.concatenate((mask_embed, embed_mat), axis=0)
 
-def get_model(in_seq_len=41, pretrained_embed_weights=None, lstm_size=128,
+def get_model(in_seq_len=41, pretrained_embed_weights=None, lstm_size=64,
               lstm_act='tanh'):
     if pretrained_embed_weights is not None:
         # vocab_size should be 400000 + 1 (index 0 returns all zeros, for masking)
