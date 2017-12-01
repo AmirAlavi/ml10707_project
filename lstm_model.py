@@ -1,12 +1,30 @@
+import matplotlib
+matplotlib.use('Agg') # For running on headless server
+import matplotlib.pyplot as plt
 import numpy as np
 from keras.models import Sequential
 from keras.layers import Embedding, Masking, Bidirectional, LSTM, Dense
 
+def get_as_one_hot(y, num_classes):
+    return np.eye(num_classes)[y]
 
 def get_data(mask_timestep=20):
     # Must generate samples, i.e. 41-grams.
     # Each gram is a wordID and the wordID at mask_timestep must be set to 0
-    pass
+    # Random data for now
+    X_train = np.random.randint(low=1, high=400001, size=(40000, 41))
+    X_valid = np.random.randint(low=1, high=400001, size=(10000, 41))
+    X_test = np.random.randint(low=1, high=400001, size=(10000, 41))
+    y_train = X_train[:, mask_timestep].flatten()
+    y_valid = X_valid[:, mask_timestep].flatten()
+    y_test = X_test[:, mask_timestep].flatten()
+    y_train = get_as_one_hot(y_train, 400001)
+    y_valid = get_as_one_hot(y_valid, 400001)
+    y_test = get_as_one_hot(y_test, 400001)
+    X_train[:, mask_timestep] = 0
+    X_valid[:, mask_timestep] = 0
+    X_test[:, mask_timestep] = 0
+    return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 def get_embed_weights(filename='glove.6B.50d.txt.embed_mat.npy'):
     embed_mat = np.load(filename)
@@ -37,6 +55,21 @@ def get_model(in_seq_len=41, pretrained_embed_weights=None, lstm_size=64,
 
     model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
     return model
+
+def plot_history(history, out="train_hist.png"):
+    min_train_epoch = np.argmin(history.history['loss']) + 1
+    min_valid_epoch = np.argmin(history.history['val_loss']) + 1
+    print("Minimum train loss achieved at epoch: " + str(min_train_epoch))
+    print("Minimum valid loss achieved at epoch: " + str(min_valid_epoch))
+    plt.figure()
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'valid'], loc='upper left')
+    plt.savefig(out)
+    plt.close()
     
     
 if __name__ == "__main__":
@@ -44,4 +77,6 @@ if __name__ == "__main__":
     print(pt_embed_weights.shape)
     model = get_model(pretrained_embed_weights=pt_embed_weights)
     model.summary()
-    # X_train, y_train, X_valid, y_valid = get_data()
+    X_train, y_train, X_valid, y_valid, X_test, y_test = get_data()
+    history = model.fit(X_train, y_train, epochs=2, batch_size=32, verbose=2, validation_data=(X_valid, y_valid))
+    
