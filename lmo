@@ -1,13 +1,14 @@
 #!/usr/bin/env python
-"""Train lstm language model
+"""Lstm language model (lmo), trained model used for Word Sense Induction downstream
 
 Usage:
-    train <input_path> [--out_path=<path> --size=<size> --activation=<act> --bidirectional --epochs=<n_epochs> --batch_size=<n_batch> --gpus=<n_gpus> --train_max_samples=<n> --valid_max_samples=<n>]
-    train (-h | --help)
+    lmo train <input_path> [--out_path=<path> --size=<size> --activation=<act> --bidirectional --epochs=<n_epochs> --batch_size=<n_batch> --gpus=<n_gpus> --train_max_samples=<n> --valid_max_samples=<n>]
+    lmo eval  <model_file> <input_file> <output_file>
+    lmo (-h | --help)
 
 Options:
     -h --help                             Show this screen.
-    -o <path>, --out_path=<path>          Specify output directory where plots and models are saved. If not specified,
+    -o <path>, --out_path=<path>          Specify output directory where command output is saved (i.e. plots, models, matrices). If not specified,
                                           defaults to a current date-time stamp. [default: CurTimeStamp]
     -s <size>, --size=<size>              Size of the LSTM layer. [default: 128]
     -a <act>, --activation=<act>          Activation function for LSTM layer. [default: tanh]
@@ -29,7 +30,7 @@ import matplotlib
 matplotlib.use('Agg') # For running on headless server
 import matplotlib.pyplot as plt
 import numpy as np
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Embedding, Masking, Bidirectional, LSTM, Dense
 from keras.utils import multi_gpu_model
 
@@ -121,7 +122,7 @@ def get_model(num_classes, in_seq_len=41, pretrained_embed_weights=None, lstm_si
                   mask_zero=True, weights=[pretrained_embed_weights],
                   trainable=False)
     )
-    lstm = LSTM(lstm_size, activation=lstm_act)
+    lstm = LSTM(lstm_size, activation=lstm_act, dropout=0.2)
     if is_bi:
         model.add(Bidirectional(lstm))
     else:
@@ -144,10 +145,7 @@ def plot_history(history, out):
     plt.savefig(out)
     plt.close()
     
-    
-if __name__ == "__main__":
-    np.random.seed(38475) # set random seed for reproducability
-    args = docopt(__doc__)
+def train(args):
     n_gpus = int(args['--gpus'])
     epochs = int(args['--epochs'])
     batch = int(args['--batch_size'])
@@ -194,3 +192,31 @@ if __name__ == "__main__":
     template_model.save(join(working_dir, "model.h5"))
     with open(join(working_dir, "command_line_args.json"), 'w') as f:
         json.dump(args, f)
+
+def predict(args):
+    print("Loading model (may take a few minutes)...")
+    model = load_model(args['<model_file>'])
+    print("Model loaded.")
+    X = np.load(args['<input_file>'])
+    out = model.predict(X)
+    # if model.layers[-1].units != 400001:
+    #     # Condensed output vocab was used
+    #     print("Model used a condensed output vocab")
+    #     CONDENSED_MAP = "/home/eramamur/10707-project/smallest_set/condensed_labels/Ytrain_unique.npy"
+    #     condensed_map = np.load(CONDENSED_MAP)
+    #     final_out = np.zeros((out.shape[0], 400001), dtype=np.float32)
+    #     final_out[:, condensed_map] = out
+    # else:
+    #     # Full vocab used in output
+    #     final_out = out
+    # np.save(args['<output_file>'], final_out)
+    np.save(args['<output_file>'], out)
+    
+if __name__ == "__main__":
+    np.random.seed(38475) # set random seed for reproducability
+    args = docopt(__doc__)
+    if args['train']:
+        train(args)
+    elif args['eval']:
+        predict(args)
+    
