@@ -214,6 +214,8 @@ def predict(args):
     
 if __name__ == "__main__":
     np.random.seed(38475) # set random seed for reproducability
+    from tensorflow import set_random_seed
+    set_random_seed(38475)
     args = docopt(__doc__)
     if args['train']:
         train(args)
