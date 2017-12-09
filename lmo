@@ -1,0 +1,224 @@
+#!/usr/bin/env python
+"""Lstm language model (lmo), trained model used for Word Sense Induction downstream
+
+Usage:
+    lmo train <input_path> [--out_path=<path> --size=<size> --activation=<act> --bidirectional --epochs=<n_epochs> --batch_size=<n_batch> --gpus=<n_gpus> --train_max_samples=<n> --valid_max_samples=<n>]
+    lmo eval  <model_file> <input_file> <output_file>
+    lmo (-h | --help)
+
+Options:
+    -h --help                             Show this screen.
+    -o <path>, --out_path=<path>          Specify output directory where command output is saved (i.e. plots, models, matrices). If not specified,
+                                          defaults to a current date-time stamp. [default: CurTimeStamp]
+    -s <size>, --size=<size>              Size of the LSTM layer. [default: 128]
+    -a <act>, --activation=<act>          Activation function for LSTM layer. [default: tanh]
+    -B --bidirectional                    Use a bidirectional LSTM.
+    -e <n_epochs>, --epochs=<n_epochs>    Specify number of epochs to train for. [default: 100]
+    -b <n_batch>, --batch_size=<n_batch>  Specify mini-batch size. [default: 512]
+    -g <n_gpus>, --gpus=<n_gpus>          Specify number of gpu cards to use (Data parallelism if > 1). [default: 1]
+    -t <n>, --train_max_samples=<n>       Only use n (randomly selected) samples from the training set. 0 means use all samples. [default: 0]
+    -v <n>, --valid_max_samples=<n>       Only use n (randomly selected) samples from the validation set. 0 means use all samples. [default: 0]
+"""
+import json
+import datetime
+from os import makedirs
+from os.path import exists, join
+import sys
+
+from docopt import docopt
+import matplotlib
+matplotlib.use('Agg') # For running on headless server
+import matplotlib.pyplot as plt
+import numpy as np
+from keras.models import Sequential, load_model
+from keras.layers import Embedding, Masking, Bidirectional, LSTM, Dense
+from keras.utils import multi_gpu_model
+
+def create_working_directory(dirname):
+    if dirname == "CurTimeStamp":
+        dirname = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    if not exists(dirname):
+        makedirs(dirname)
+    return dirname
+
+# def get_as_one_hot(y, num_classes):
+#     return np.eye(num_classes)[y]
+
+
+# def get_data(time_steps=41, mask_timestep=20):
+#     # Must generate samples, i.e. 41-grams.
+#     # Each gram is a wordID and the wordID at mask_timestep must be set to 0
+#     # Random data for now
+#     X_train = np.random.randint(low=1, high=400001, size=(1000000, time_steps))
+#     X_valid = np.random.randint(low=1, high=400001, size=(100000, time_steps))
+#     X_test = np.random.randint(low=1, high=400001, size=(100000, time_steps))
+#     #y_train = X_train[:, mask_timestep].flatten()
+#     #y_valid = X_valid[:, mask_timestep].flatten()
+#     #y_test = X_test[:, mask_timestep].flatten()
+#     y_train = np.random.randint(low=1, high=100001, size=(X_train.shape[0],))
+#     y_valid = np.random.randint(low=1, high=100001, size=(X_valid.shape[0],))
+#     y_test = np.random.randint(low=1, high=100001, size=(X_test.shape[0],))
+#     X_train[:, mask_timestep] = 0
+#     X_valid[:, mask_timestep] = 0
+#     X_test[:, mask_timestep] = 0
+#     return X_train, y_train, X_valid, y_valid, X_test, y_test
+
+def get_data(data_folder):
+    X_train = np.load(join(data_folder, "Xtrain.npy"))
+    X_valid = np.load(join(data_folder, "Xvalid.npy"))
+    X_test = np.load(join(data_folder, "Xtest.npy"))
+    if exists(join(data_folder, "condensed_labels")):
+        print("\tUsing condensed label set")
+        y_train = np.load(join(data_folder, "condensed_labels/Ytrain_condensed.npy"))
+        y_valid = np.load(join(data_folder, "condensed_labels/Yvalid_condensed.npy"))
+        y_test = np.load(join(data_folder, "condensed_labels/Ytest_condensed.npy"))
+        num_classes = np.amax(y_train) + 1
+    else:
+        y_train = np.load(join(data_folder, "Ytrain.npy"))
+        y_valid = np.load(join(data_folder, "Yvalid.npy"))
+        y_test = np.load(join(data_folder, "Ytest.npy"))
+        num_classes = 400001
+    return X_train, y_train, X_valid, y_valid, X_test, y_test, num_classes
+
+def remap_vocab(y_train, y_valid, y_test, data_folder):
+    #out_folder = "/home/aalavi/ml10707_project/smallest/condensed_labels"
+    out_folder = join(data_folder, "condensed_labels")
+    if not exists(out_folder):
+        makedirs(out_folder)
+    # Generate a new reduced label range based on y_train
+    y_train_unique, y_train_condensed = np.unique(y_train, return_inverse=True)
+    np.save(join(out_folder, "Ytrain_unique.npy"), y_train_unique)
+    np.save(join(out_folder, "Ytrain_condensed.npy"), y_train_condensed)
+    # Need to remap y_valid and y_test in the same way, using the same remappings from y_train
+    print("Remapping ", len(y_valid), " samples in y_valid...")
+    y_train_argsorted = np.argsort(y_train)
+    y_valid_pos = np.searchsorted(y_train[y_train_argsorted], y_valid)
+    y_valid_idx = y_train_argsorted[y_valid_pos]
+    y_valid_condensed = y_train_condensed[y_valid_idx]
+    np.save(join(out_folder, "Yvalid_condensed.npy"), y_valid_condensed)
+    print("Remapping ", len(y_test), " samples in y_test...")
+    y_test_pos = np.searchsorted(y_train[y_train_argsorted], y_test)
+    y_test_idx = y_train_argsorted[y_test_pos]
+    y_test_condensed = y_train_condensed[y_test_idx]
+    np.save(join(out_folder, "Ytest_condensed.npy"), y_test_condensed)
+
+def get_embed_weights(filename='glove.6B.50d.txt.embed_mat.npy'):
+    embed_mat = np.load(filename)
+    mask_embed = np.zeros(shape=(1, embed_mat.shape[1]), dtype=np.float32)
+    return np.concatenate((mask_embed, embed_mat), axis=0)
+
+def get_model(num_classes, in_seq_len=41, pretrained_embed_weights=None, lstm_size=128,
+              lstm_act='tanh', is_bi=False):
+    if pretrained_embed_weights is not None:
+        # vocab_size should be 400000 + 1 (index 0 returns all zeros, for masking)
+        vocab_size = pretrained_embed_weights.shape[0]
+        embed_size = pretrained_embed_weights.shape[1]
+    else:
+        raise ValueError("Must provide pretrained embedding weights")
+    
+    model = Sequential()
+    model.add(
+        Embedding(vocab_size, embed_size, input_length=in_seq_len,
+                  mask_zero=True, weights=[pretrained_embed_weights],
+                  trainable=False)
+    )
+    lstm = LSTM(lstm_size, activation=lstm_act, dropout=0.2)
+    if is_bi:
+        model.add(Bidirectional(lstm))
+    else:
+        model.add(lstm)
+    model.add(Dense(num_classes, activation='softmax'))
+    return model
+
+def plot_history(history, out):
+    min_train_epoch = np.argmin(history.history['loss']) + 1
+    min_valid_epoch = np.argmin(history.history['val_loss']) + 1
+    print("Minimum train loss achieved at epoch: " + str(min_train_epoch))
+    print("Minimum valid loss achieved at epoch: " + str(min_valid_epoch))
+    plt.figure()
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'valid'], loc='upper left')
+    plt.savefig(out)
+    plt.close()
+    
+def train(args):
+    n_gpus = int(args['--gpus'])
+    epochs = int(args['--epochs'])
+    batch = int(args['--batch_size'])
+    out_path = args['--out_path']
+    lstm_size = int(args['--size'])
+    lstm_act = args['--activation']
+    is_bi = args['--bidirectional']
+    train_max = int(args['--train_max_samples'])
+    valid_max = int(args['--valid_max_samples'])
+    working_dir = create_working_directory(out_path)
+    X_train, y_train, X_valid, y_valid, X_test, y_test, num_classes = get_data(args['<input_path>'])
+    #remap_vocab(y_train, y_valid, y_test, args['<input_path>'])
+    #sys.exit(0)
+    seq_len = X_train.shape[1]
+    print(seq_len, " sequence length")
+    print(num_classes, " output classes")
+    
+    pt_embed_weights = get_embed_weights()
+    print(pt_embed_weights.shape)
+    if n_gpus > 1:
+        print("Using multiple gpus")
+        import tensorflow as tf
+        with tf.device('/cpu:0'):
+            template_model = get_model(num_classes, in_seq_len=seq_len, pretrained_embed_weights=pt_embed_weights, lstm_size=lstm_size, lstm_act=lstm_act, is_bi=is_bi)
+        model = multi_gpu_model(template_model, n_gpus)
+    else:
+        template_model = get_model(num_classes, in_seq_len=seq_len, pretrained_embed_weights=pt_embed_weights, lstm_size=lstm_size, lstm_act=lstm_act, is_bi=is_bi)
+        model = template_model
+
+    template_model.summary()
+    model.compile(loss='sparse_categorical_crossentropy', optimizer='rmsprop')
+
+    if train_max > 0:
+        sample_idx = np.random.choice(np.arange(X_train.shape[0]), train_max, replace=False)
+        X_train = X_train[sample_idx]
+        y_train = y_train[sample_idx]
+    if valid_max > 0:
+        sample_idx = np.random.choice(np.arange(X_valid.shape[0]), valid_max, replace=False)
+        X_valid = X_valid[sample_idx]
+        y_valid = y_valid[sample_idx]
+        
+    history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch, verbose=1, validation_data=(X_valid, y_valid))
+    plot_history(history, join(working_dir, "train_hist.png"))
+    template_model.save(join(working_dir, "model.h5"))
+    with open(join(working_dir, "command_line_args.json"), 'w') as f:
+        json.dump(args, f)
+
+def predict(args):
+    print("Loading model (may take a few minutes)...")
+    model = load_model(args['<model_file>'])
+    print("Model loaded.")
+    X = np.load(args['<input_file>'])
+    out = model.predict(X)
+    # if model.layers[-1].units != 400001:
+    #     # Condensed output vocab was used
+    #     print("Model used a condensed output vocab")
+    #     CONDENSED_MAP = "/home/eramamur/10707-project/smallest_set/condensed_labels/Ytrain_unique.npy"
+    #     condensed_map = np.load(CONDENSED_MAP)
+    #     final_out = np.zeros((out.shape[0], 400001), dtype=np.float32)
+    #     final_out[:, condensed_map] = out
+    # else:
+    #     # Full vocab used in output
+    #     final_out = out
+    # np.save(args['<output_file>'], final_out)
+    np.save(args['<output_file>'], out)
+    
+if __name__ == "__main__":
+    np.random.seed(38475) # set random seed for reproducability
+    from tensorflow import set_random_seed
+    set_random_seed(38475)
+    args = docopt(__doc__)
+    if args['train']:
+        train(args)
+    elif args['eval']:
+        predict(args)
+    
