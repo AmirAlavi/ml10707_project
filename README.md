@@ -9,3 +9,4 @@ Jupyter Notebook file: construct_dataset.ipynb
 * Constructs the train, validation and test sets which are basically n-grams that are in the form of indexes into GloVe.
 * Any n-gram with words not in GloVe vocabulary are removed
 * Test and validation split are constructed such that the labels (middle word held out) in these sets are a subset of the labels present in training set
+* Tested on Python2.7.x (Anaconda distribution)
