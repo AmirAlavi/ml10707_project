@@ -1,4 +1,4 @@
-# ml10707_project
+# 10-707 Project (Word Sense Induction using LSTMs)
 
 ## Constructing the training dataset
 Jupyter Notebook file: construct_dataset.ipynb
